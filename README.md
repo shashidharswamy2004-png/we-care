@@ -1,24 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# WeCare Hospital
 
-# Run and deploy your AI Studio app
+WeCare Hospital is a web-based hospital management and appointment booking project.
 
-This contains everything you need to run your app locally.
+## Technologies
+- React
+- TypeScript
+- Vite
+- Node.js
+- Express.js
+- MySQL
 
-View your app in AI Studio: https://ai.studio/apps/d0782000-1aec-46cf-b54d-087c4122f4ff
+## Features
+- User authentication
+- Doctor applications and verification
+- Doctor listings
+- Appointment booking
+- Admin dashboard
+- Support tickets
 
-## Run Locally
+## Development
 
-**Prerequisites:**  Node.js
+Install dependencies:
 
+```bash
+npm install
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Start the API server in one terminal:
-   `npm run server`
-4. Start the frontend in another terminal:
-   `npm run dev`
+Start the frontend:
 
-The frontend uses the same-origin `/api` path by default. Vite proxies API requests to `http://localhost:4000` during development. When hosting the frontend and API on separate origins, set `VITE_API_BASE_URL` to the API's `/api` URL before building.
+```bash
+npm run dev
+```
+
+Start the backend in a separate terminal:
+
+```bash
+npm run server
+```
