@@ -1,0 +1,6 @@
+{
+  "name": "WeCare Hospital",
+  "description": "A modern, patient-first hospital platform featuring comprehensive departments, specialized physicians, and seamless appointment booking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
