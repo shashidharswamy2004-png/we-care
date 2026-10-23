@@ -15,11 +15,17 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      host: '0.0.0.0',
+      port: 3000,
+      allowedHosts: ['armhole-snowbound-defog.ngrok-free.dev'],
+
+      // Preserve existing HMR behavior
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+
+      // Preserve existing file-watching behavior
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+
+      // API proxy
       proxy: {
         '/api': {
           target: 'http://localhost:4000',

@@ -142,6 +142,17 @@ export interface Appointment {
   prescription?: string;
 }
 
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: 'booked' | 'confirmed' | 'rescheduled' | 'cancelled';
+  title: string;
+  message: string;
+  appointmentId: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
 export type SupportTicketCategory = 'Appointment' | 'Account' | 'Website issue' | 'Other';
 
 export interface SupportTicketDraft {

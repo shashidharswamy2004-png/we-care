@@ -260,7 +260,8 @@ export const DoctorDashboardPage: React.FC<DoctorDashboardPageProps> = ({
         setRealAppointments(updated);
       }
     } catch (e) {
-      console.warn('Update appointment error:', e);
+      console.error('Update appointment error:', e);
+      window.alert('The appointment could not be updated. Please try again.');
     }
   };
 

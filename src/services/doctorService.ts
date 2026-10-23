@@ -136,19 +136,11 @@ export async function updateAppointmentDetails(
   appointmentId: string,
   updates: Partial<Pick<Appointment, 'status' | 'notesByDoctor' | 'prescription' | 'timeSlot' | 'date'>>
 ): Promise<void> {
-  try {
-    await sqlApi.updateAppointmentDetails(appointmentId, updates);
-  } catch (error) {
-    console.warn('Could not update appointment in SQL backend:', error);
-  }
+  await sqlApi.updateAppointmentDetails(appointmentId, updates);
 }
 
 export async function saveAppointment(appointment: Appointment): Promise<void> {
-  try {
-    await sqlApi.saveAppointment(appointment);
-  } catch (error) {
-    console.warn('Could not save appointment to SQL backend:', error);
-  }
+  await sqlApi.saveAppointment(appointment);
 }
 
 function getLocalDoctorApplications(): DoctorApplication[] {

@@ -25,7 +25,7 @@ import { SupportTicketModal } from './components/SupportTicketModal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Appointment, Doctor } from './types/hospital';
 import { DOCTORS } from './data/hospitalData';
-import { fetchVerifiedDoctors } from './services/doctorService';
+import { fetchVerifiedDoctors, updateAppointmentDetails } from './services/doctorService';
 import { LifeBuoy, LogOut, ShieldCheck } from 'lucide-react';
 
 function getUserAppointmentsKey(userId?: string) {
@@ -147,17 +147,33 @@ function AppContent() {
   };
 
   const handleCancelAppointment = (id: string) => {
-    setAppointments((prev) =>
-      prev.map((apt) => (apt.id === id ? { ...apt, status: 'Cancelled' as const } : apt))
-    );
+    void (async () => {
+      try {
+        await updateAppointmentDetails(id, { status: 'Cancelled' });
+        setAppointments((prev) =>
+          prev.map((apt) => (apt.id === id ? { ...apt, status: 'Cancelled' as const } : apt))
+        );
+      } catch (error) {
+        console.error('Could not cancel appointment:', error);
+        window.alert('The appointment could not be cancelled. Please try again.');
+      }
+    })();
   };
 
   const handleRescheduleAppointment = (id: string, newDate: string, newSlot: string) => {
-    setAppointments((prev) =>
-      prev.map((apt) =>
-        apt.id === id ? { ...apt, date: newDate, timeSlot: newSlot, status: 'Confirmed' as const } : apt
-      )
-    );
+    void (async () => {
+      try {
+        await updateAppointmentDetails(id, { date: newDate, timeSlot: newSlot, status: 'Confirmed' });
+        setAppointments((prev) =>
+          prev.map((apt) =>
+            apt.id === id ? { ...apt, date: newDate, timeSlot: newSlot, status: 'Confirmed' as const } : apt
+          )
+        );
+      } catch (error) {
+        console.error('Could not reschedule appointment:', error);
+        window.alert('The appointment could not be rescheduled. Please try again.');
+      }
+    })();
   };
 
   if (isAdmin) {

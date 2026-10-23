@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Menu, X, CalendarCheck, User as UserIcon, LogOut, ChevronDown, Stethoscope, ShieldCheck, FileCheck, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { NotificationCenter } from './NotificationCenter';
 
 export type NavTab =
   | 'home'
@@ -150,24 +151,27 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </nav>
 
+          {user && !isAdmin && <NotificationCenter userId={user.uid} />}
+
           {/* Zone 3: Authentication and Primary Action */}
           <div className="hidden md:flex items-center gap-3 shrink-0">
             {user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
-                    isAdmin ? 'bg-amber-600' : isDoctor ? 'bg-teal-700' : 'bg-slate-700'
-                  }`}>
-                    {isAdmin ? 'A' : isDoctor ? 'Dr' : user.displayName ? user.displayName[0].toUpperCase() : 'U'}
-                  </div>
-                  <span className="max-w-[120px] truncate">
-                    {user.displayName || user.email?.split('@')[0]}
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </button>
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                      isAdmin ? 'bg-amber-600' : isDoctor ? 'bg-teal-700' : 'bg-slate-700'
+                    }`}>
+                      {isAdmin ? 'A' : isDoctor ? 'Dr' : user.displayName ? user.displayName[0].toUpperCase() : 'U'}
+                    </div>
+                    <span className="max-w-[120px] truncate">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
 
                 {userDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 text-xs divide-y divide-slate-100">
@@ -257,7 +261,8 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              </>
             ) : (
               <button
                 onClick={onOpenAuth}

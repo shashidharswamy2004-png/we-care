@@ -62,6 +62,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [reasonForVisit, setReasonForVisit] = useState('');
   const [notes, setNotes] = useState('');
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
+  const [submitError, setSubmitError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sync props when opening
   useEffect(() => {
@@ -122,39 +124,47 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (isSubmitting || !validateForm()) return;
+    setSubmitError('');
+    setIsSubmitting(true);
 
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const newAppointment: Appointment = {
-      id: `apt-${Date.now()}`,
-      referenceNumber: `WC-2026-${randomSuffix}`,
-      departmentId: currentDept.id,
-      departmentName: currentDept.name,
-      doctorId: currentDoctor.id,
-      doctorName: currentDoctor.name,
-      doctorTitle: currentDoctor.title,
-      appointmentType,
-      date: selectedDate,
-      timeSlot: selectedSlot,
-      patientName: patientName.trim(),
-      patientEmail: patientEmail.trim(),
-      patientPhone: patientPhone.trim(),
-      patientAge: patientAge.trim(),
-      patientGender,
-      reasonForVisit: reasonForVisit.trim(),
-      isFirstVisit,
-      notes: notes.trim(),
-      status: 'Confirmed',
-      createdAt: new Date().toISOString(),
-      patientUid: user?.uid,
-      doctorUid: currentDoctor?.userId
-    };
+    try {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const newAppointment: Appointment = {
+        id: `apt-${Date.now()}`,
+        referenceNumber: `WC-2026-${randomSuffix}`,
+        departmentId: currentDept.id,
+        departmentName: currentDept.name,
+        doctorId: currentDoctor.id,
+        doctorName: currentDoctor.name,
+        doctorTitle: currentDoctor.title,
+        appointmentType,
+        date: selectedDate,
+        timeSlot: selectedSlot,
+        patientName: patientName.trim(),
+        patientEmail: patientEmail.trim(),
+        patientPhone: patientPhone.trim(),
+        patientAge: patientAge.trim(),
+        patientGender,
+        reasonForVisit: reasonForVisit.trim(),
+        isFirstVisit,
+        notes: notes.trim(),
+        status: 'Confirmed',
+        createdAt: new Date().toISOString(),
+        patientUid: user?.uid,
+        doctorUid: currentDoctor?.userId
+      };
 
-    // Save to the database and invoke callback
-    saveAppointment(newAppointment).catch(err => console.warn('Background appointment save:', err));
-    onAppointmentBooked(newAppointment);
+      await saveAppointment(newAppointment);
+      onAppointmentBooked(newAppointment);
+    } catch (error) {
+      console.error('Could not save appointment:', error);
+      setSubmitError('The appointment could not be booked. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -487,6 +497,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
           {/* Footer Submit Buttons */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            {submitError && <p role="alert" className="mr-auto text-xs text-rose-600">{submitError}</p>}
             <button
               type="button"
               onClick={onClose}
@@ -496,9 +507,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 active:bg-teal-900 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 active:bg-teal-900 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-2 disabled:cursor-wait disabled:opacity-60"
             >
-              <span>Confirm & Book Appointment</span>
+              <span>{isSubmitting ? 'Booking...' : 'Confirm & Book Appointment'}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>

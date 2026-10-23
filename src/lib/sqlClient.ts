@@ -1,4 +1,4 @@
-import type { AdminDashboardData, AdminSupportTicket, SupportTicketStatus, SupportTicketSummary } from '../types/hospital';
+import type { AdminDashboardData, AdminSupportTicket, AppNotification, SupportTicketStatus, SupportTicketSummary } from '../types/hospital';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -142,6 +142,17 @@ export const sqlApi = {
     return api<{ appointment: any }>(`/appointments/${appointmentId}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
+    });
+  },
+
+  async getNotifications(userId: string) {
+    return api<{ notifications: AppNotification[] }>(`/notifications?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async markNotificationRead(notificationId: string, userId: string) {
+    return api<{ id: string; isRead: boolean }>(`/notifications/${encodeURIComponent(notificationId)}/read`, {
+      method: 'PATCH',
+      body: JSON.stringify({ userId })
     });
   },
 

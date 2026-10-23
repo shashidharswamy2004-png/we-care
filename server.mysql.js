@@ -9,7 +9,9 @@ const PORT = process.env.PORT || 4001;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_SENDER_NUMBER = process.env.TWILIO_SENDER_NUMBER;
-const twilioClient = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
+const hasTwilioCredentials = /^AC[a-f\d]{32}$/i.test(TWILIO_ACCOUNT_SID || '')
+  && Boolean(TWILIO_AUTH_TOKEN && !TWILIO_AUTH_TOKEN.startsWith('YOUR_'));
+const twilioClient = hasTwilioCredentials ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
 
 const {
   MYSQL_HOST,
@@ -81,6 +83,123 @@ async function sendOtpSms(phone, otp) {
   }
 }
 
+async function sendAppointmentSms(phone, message) {
+  if (!twilioClient || !TWILIO_SENDER_NUMBER) {
+    console.warn(`Appointment SMS not sent to ${phone || '(missing phone)'}; configure Twilio credentials and TWILIO_SENDER_NUMBER.`);
+    return false;
+  }
+
+  const to = toE164Phone(phone);
+  if (!to) {
+    console.warn('Appointment SMS not sent because the recipient phone number is invalid.');
+    return false;
+  }
+
+  try {
+    await twilioClient.messages.create({ body: message, from: TWILIO_SENDER_NUMBER, to });
+    return true;
+  } catch (error) {
+    console.error('Appointment notification SMS failed:', error?.message || error);
+    return false;
+  }
+}
+
+function getAppointmentEvent(type, appointment) {
+  const appointmentTime = `${appointment.date} at ${appointment.timeSlot}`;
+  const appointmentRef = appointment.referenceNumber || appointment.id;
+  const doctorName = appointment.doctorName || 'your doctor';
+  const patientName = appointment.patientName || 'A patient';
+  const eventText = {
+    booked: 'booked and confirmed',
+    confirmed: 'confirmed',
+    rescheduled: 'rescheduled',
+    cancelled: 'cancelled'
+  }[type];
+
+  return {
+    type,
+    title: {
+      booked: 'Appointment booked and confirmed',
+      confirmed: 'Appointment confirmed',
+      rescheduled: 'Appointment rescheduled',
+      cancelled: 'Appointment cancelled'
+    }[type],
+    patientMessage: `Your appointment with ${doctorName} has been ${eventText} for ${appointmentTime}. Reference: ${appointmentRef}.`,
+    doctorMessage: `${patientName}'s appointment has been ${eventText} for ${appointmentTime}. Reference: ${appointmentRef}.`,
+    patientSms: `WeCare: Your appointment with ${doctorName} has been ${eventText} for ${appointmentTime}. Ref: ${appointmentRef}.`,
+    doctorSms: `WeCare: ${patientName}'s appointment has been ${eventText} for ${appointmentTime}. Ref: ${appointmentRef}.`
+  };
+}
+
+async function notifyAppointmentChange(appointment, type) {
+  const event = getAppointmentEvent(type, appointment);
+  const doctorUid = appointment.doctorUid || '';
+  let doctorRows;
+  if (doctorUid) {
+    [doctorRows] = await pool.query('SELECT id, phone FROM users WHERE id = ?', [doctorUid]);
+  } else {
+    [doctorRows] = await pool.query('SELECT id, phone FROM users WHERE doctorId = ?', [appointment.doctorId]);
+  }
+  let doctorUser = doctorRows[0] || null;
+  if (!doctorUser && appointment.doctorId) {
+    const [fallbackDoctorRows] = await pool.query('SELECT id, phone FROM users WHERE doctorId = ?', [appointment.doctorId]);
+    doctorUser = fallbackDoctorRows[0] || null;
+  }
+  let doctorPhone = doctorUser?.phone || '';
+
+  if (!doctorPhone && doctorUid) {
+    const [applicationRows] = await pool.query(
+      'SELECT data FROM doctor_applications WHERE userId = ? OR id = ? ORDER BY id DESC LIMIT 1',
+      [doctorUid, doctorUid]
+    );
+    if (applicationRows.length) {
+      const application = typeof applicationRows[0].data === 'string'
+        ? JSON.parse(applicationRows[0].data)
+        : applicationRows[0].data;
+      doctorPhone = application.phone || '';
+    }
+  }
+
+  let patientUser = null;
+  if (appointment.patientUid) {
+    const [patientRows] = await pool.query('SELECT id FROM users WHERE id = ?', [appointment.patientUid]);
+    patientUser = patientRows[0] || null;
+  }
+  if (!patientUser) {
+    const normalizedPatientPhone = normalizePhone(appointment.patientPhone);
+    const normalizedPatientEmail = String(appointment.patientEmail || '').trim().toLowerCase();
+    const [patientRows] = await pool.query(
+      'SELECT id, phone, email FROM users WHERE email = ? OR phone = ?',
+      [normalizedPatientEmail, normalizedPatientPhone]
+    );
+    patientUser = patientRows.find((candidate) =>
+      (normalizedPatientPhone && normalizePhone(candidate.phone) === normalizedPatientPhone)
+      || (normalizedPatientEmail && String(candidate.email || '').toLowerCase() === normalizedPatientEmail)
+    ) || null;
+  }
+
+  const recipients = [
+    patientUser?.id && { userId: patientUser.id, message: event.patientMessage },
+    doctorUser?.id && { userId: doctorUser.id, message: event.doctorMessage }
+  ].filter(Boolean);
+  const createdAt = new Date().toISOString();
+  for (const recipient of recipients) {
+    await pool.query(
+      'INSERT INTO notifications (id, userId, type, title, message, appointmentId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [`${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, recipient.userId, event.type, event.title, recipient.message, appointment.id, createdAt]
+    );
+  }
+
+  const smsRecipients = [
+    { phone: appointment.patientPhone, message: event.patientSms },
+    { phone: doctorPhone, message: event.doctorSms }
+  ].filter((recipient) => recipient.phone);
+  if (!doctorPhone) {
+    console.warn(`Doctor appointment SMS not sent for ${appointment.id}; no registered doctor phone is available.`);
+  }
+  await Promise.all(smsRecipients.map((recipient) => sendAppointmentSms(recipient.phone, recipient.message)));
+}
+
 const otpStore = new Map();
 
 function makeUserPayload(row) {
@@ -144,6 +263,20 @@ async function ensureMysqlSchema() {
       CREATE TABLE IF NOT EXISTS appointments (
         id VARCHAR(255) PRIMARY KEY,
         data JSON
+      )
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id VARCHAR(255) PRIMARY KEY,
+        userId VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        appointmentId VARCHAR(255) NOT NULL,
+        createdAt VARCHAR(255) NOT NULL,
+        isRead TINYINT(1) NOT NULL DEFAULT 0,
+        INDEX notifications_user_created (userId, createdAt)
       )
     `);
 
@@ -486,8 +619,77 @@ app.post('/api/appointments', async (req, res) => {
   }
 
   const appointment = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+  const [existingRows] = await pool.query('SELECT id FROM appointments WHERE id = ?', [appointment.id]);
   await pool.query('INSERT INTO appointments (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)', [appointment.id, JSON.stringify(appointment)]);
+  if (!existingRows.length) {
+    await notifyAppointmentChange(appointment, 'booked');
+  }
   res.json({ appointment });
+});
+
+app.put('/api/appointments/:id', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ message: 'MySQL is not configured.' });
+  }
+
+  const [rows] = await pool.query('SELECT data FROM appointments WHERE id = ?', [req.params.id]);
+  if (!rows.length) {
+    return res.status(404).json({ message: 'Appointment not found.' });
+  }
+
+  const current = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+  const updated = { ...current, ...req.body, id: req.params.id };
+  await pool.query('UPDATE appointments SET data = ? WHERE id = ?', [JSON.stringify(updated), req.params.id]);
+
+  let eventType = null;
+  if (updated.status === 'Cancelled' && current.status !== 'Cancelled') {
+    eventType = 'cancelled';
+  } else if (updated.date !== current.date || updated.timeSlot !== current.timeSlot) {
+    eventType = 'rescheduled';
+  } else if (updated.status === 'Confirmed' && current.status !== 'Confirmed') {
+    eventType = 'confirmed';
+  }
+  if (eventType) {
+    await notifyAppointmentChange(updated, eventType);
+  }
+  res.json({ appointment: updated });
+});
+
+app.get('/api/notifications', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ message: 'MySQL is not configured.' });
+  }
+
+  const userId = String(req.query.userId || '').trim();
+  if (!userId) {
+    return res.status(400).json({ message: 'A user ID is required.' });
+  }
+
+  const [rows] = await pool.query(
+    'SELECT id, userId, type, title, message, appointmentId, createdAt, isRead FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT 50',
+    [userId]
+  );
+  res.json({ notifications: rows.map((notification) => ({ ...notification, isRead: Boolean(notification.isRead) })) });
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ message: 'MySQL is not configured.' });
+  }
+
+  const userId = String(req.body?.userId || '').trim();
+  if (!userId) {
+    return res.status(400).json({ message: 'A user ID is required.' });
+  }
+
+  const [result] = await pool.query(
+    'UPDATE notifications SET isRead = 1 WHERE id = ? AND userId = ?',
+    [req.params.id, userId]
+  );
+  if (!result.affectedRows) {
+    return res.status(404).json({ message: 'Notification not found.' });
+  }
+  res.json({ id: req.params.id, isRead: true });
 });
 
 app.post('/api/support-tickets', async (req, res) => {
